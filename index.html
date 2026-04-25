@@ -49,13 +49,23 @@
   </style>
 </head>
 <body>
+  <!--
+    The home page content is rendered directly in HTML.
+    This means the home page ALWAYS shows immediately, even before
+    any JavaScript runs. JS only takes over for /session/... pages.
+  -->
   <div id="app" class="min-h-screen flex items-center justify-center p-4">
-    <!-- Initial loading spinner while JS initialises -->
-    <div class="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full text-center">
-      <svg class="w-10 h-10 mx-auto text-blue-600 spin" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
+    <div id="home-static" class="max-w-md w-full">
+      <div class="bg-white rounded-2xl p-8 shadow-2xl text-center">
+        <p class="text-5xl mb-4">🔐🗝️</p>
+        <h2 class="text-3xl font-bold text-gray-800 mb-4">Secret Verify</h2>
+        <p class="text-gray-600 mb-8">Secure secret sharing between holder and customer</p>
+        <button id="create-btn"
+          onclick="createSession()"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition">
+          Create New Session
+        </button>
+      </div>
     </div>
   </div>
 
@@ -501,11 +511,4 @@
       if (state.status === 'pending_code_approval') {
         content += `
           <div class="text-center">
-            ${loadingSpinner('Verifying your code with the holder...')}
-          </div>
-        `;
-      }
-
-      // ── STEP 3: Verified — waiting for / showing secret message ──
-      if (state.status === 'verified') {
-        if (state.secretMessage && !st
+            $
