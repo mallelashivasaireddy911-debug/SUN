@@ -8,11 +8,7 @@
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -20,27 +16,22 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     }
 
-    .masked-input::placeholder {
-      letter-spacing: 0.1em;
-    }
-
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+    .pulse-animate { animation: pulse 1.5s ease-in-out infinite; }
 
-    .pulse-animate {
-      animation: pulse 1.5s ease-in-out infinite;
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
+    .spin { animation: spin 1s linear infinite; }
 
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
-
-    .fade-in {
-      animation: fadeIn 0.3s ease-out;
-    }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
 
     .toast {
       position: fixed;
@@ -53,53 +44,38 @@
       z-index: 1000;
       animation: fadeIn 0.3s ease-out;
     }
-
-    .toast-error {
-      background: #dc2626;
-    }
-
-    .toast-success {
-      background: #16a34a;
-    }
-
-    .timer-warning {
-      animation: pulse 0.8s ease-in-out infinite;
-    }
+    .toast-error { background: #dc2626; }
+    .toast-success { background: #16a34a; }
   </style>
 </head>
 <body>
   <div id="app" class="min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full">
-      <div class="text-center">
-        <h1 class="text-4xl font-bold text-gray-800 mb-2">🔐 Secret Verify</h1>
-        <p class="text-gray-600">Secure secret sharing platform</p>
-        <div class="mt-8 animate-spin">
-          <svg class="w-8 h-8 mx-auto text-blue-600" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-        </div>
-      </div>
+    <!-- Initial loading spinner while JS initialises -->
+    <div class="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full text-center">
+      <svg class="w-10 h-10 mx-auto text-blue-600 spin" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
     </div>
   </div>
 
   <script>
     // ============ STATE ============
+    // Single source of truth. Updated by socket events & initial API fetch.
     let state = {
-      sessionId: window.location.pathname.split('/session/')[1],
+      sessionId: window.location.pathname.split('/session/')[1] || null,
       holderToken: new URLSearchParams(window.location.search).get('holder'),
       isHolder: false,
+      // possible values: pending | pending_approval | code_entry |
+      //                  pending_code_approval | verified
       status: 'pending',
       customer: { email: null, emailApproved: false },
-      codeAttempts: 0,
-      maxCodeAttempts: 3,
+      customerCode: null,          // Holder-only: code submitted by customer
+      codeWasRejected: false,      // Customer UX: show "try again" hint
       secretMessage: null,
       secretMessageExpiresAt: null,
       messageExpired: false,
       socket: null,
-      valueExpiresAt: null,
-      valueExpired: false,
-      lastUpdateTime: 0
     };
 
     // ============ SOCKET.IO ============
@@ -110,80 +86,79 @@
         state.socket.emit('join-session', state.sessionId);
       }
 
+      // Holder screen: customer typed their email
       state.socket.on('customer-submitted-email', (data) => {
         state.customer.email = data.email;
-        render();
+        state.status = 'pending_approval';
+        renderView();
       });
 
+      // Both screens: holder approved the email
+      // Customer immediately moves to code entry
       state.socket.on('customer-approved', () => {
         state.customer.emailApproved = true;
         state.status = 'code_entry';
-        showSuccess('Customer approved! Enter code.');
-        render();
+        state.codeWasRejected = false;
+        if (!state.isHolder) showSuccess('Email approved! Enter your secret code.');
+        renderView();
       });
 
-      state.socket.on('code-attempt', (data) => {
-        state.codeAttempts = data.attempt;
-        if (!data.correct) {
-          showError(`Incorrect code! Attempts left: ${state.maxCodeAttempts - state.codeAttempts}`);
-        }
-        render();
+      // Holder screen: customer submitted a code, holder must decide
+      state.socket.on('customer-submitted-code', (data) => {
+        state.customerCode = data.code;
+        state.status = 'pending_code_approval';
+        renderView();
       });
 
-      state.socket.on('secret-value-sent', (data) => {
-        state.status = 'value_entry';
-        state.valueExpiresAt = new Date(Date.now() + data.expiresIn * 1000);
-        state.valueExpired = false;
-        startValueTimer();
-        showSuccess('Check your email for the secret value!');
-        render();
-      });
-
-      state.socket.on('customer-verified', () => {
+      // Both screens: holder approved the code → verified
+      state.socket.on('code-approved', () => {
         state.status = 'verified';
-        showSuccess('You are verified! Waiting for secret message...');
-        render();
+        state.customerCode = null;
+        if (!state.isHolder) showSuccess('Code verified! Waiting for secret message...');
+        renderView();
       });
 
+      // Customer screen: holder rejected the code → retry
+      state.socket.on('code-rejected', () => {
+        state.status = 'code_entry';
+        state.customerCode = null;
+        state.codeWasRejected = true;
+        if (!state.isHolder) showError('Incorrect code. Please try again.');
+        renderView();
+      });
+
+      // Both screens: holder sent the secret message
       state.socket.on('secret-message', (data) => {
         state.secretMessage = data.message;
         state.secretMessageExpiresAt = new Date(Date.now() + data.expiresIn * 1000);
         state.messageExpired = false;
         startMessageTimer();
-        showSuccess('Secret message received!');
-        render();
+        if (!state.isHolder) showSuccess('Secret message received!');
+        renderView();
       });
     }
 
     // ============ TIMERS ============
-    function startValueTimer() {
-      const interval = setInterval(() => {
-        if (new Date() > state.valueExpiresAt) {
-          state.valueExpired = true;
-          clearInterval(interval);
-          render();
-        } else {
-          render();
-        }
-      }, 500);
-    }
-
     function startMessageTimer() {
       const interval = setInterval(() => {
         if (new Date() > state.secretMessageExpiresAt) {
           state.messageExpired = true;
           clearInterval(interval);
-          render();
+          renderView();
         } else {
-          render();
+          // Only re-render the timer portion to avoid disrupting input fields
+          const timerEl = document.getElementById('msg-timer');
+          if (timerEl) {
+            const secs = getTimeRemaining(state.secretMessageExpiresAt);
+            timerEl.textContent = `⏱️ ${secs}s`;
+            timerEl.className = secs < 10 ? 'font-bold text-2xl text-red-600' : 'font-bold text-2xl text-blue-600';
+          }
         }
       }, 500);
     }
 
     function getTimeRemaining(expiresAt) {
-      const now = new Date();
-      const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
-      return remaining;
+      return Math.max(0, Math.floor((new Date(expiresAt) - new Date()) / 1000));
     }
 
     // ============ UTILITIES ============
@@ -192,7 +167,7 @@
       toast.className = 'toast toast-error';
       toast.textContent = msg;
       document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      setTimeout(() => toast.remove(), 3500);
     }
 
     function showSuccess(msg) {
@@ -200,21 +175,35 @@
       toast.className = 'toast toast-success';
       toast.textContent = msg;
       document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      setTimeout(() => toast.remove(), 3500);
+    }
+
+    function loadingSpinner(label) {
+      return `
+        <div class="flex flex-col items-center gap-4 py-6">
+          <svg class="w-10 h-10 text-blue-500 spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p class="text-gray-500 text-base pulse-animate">${label}</p>
+        </div>
+      `;
     }
 
     // ============ API CALLS ============
+
     async function createSession() {
-      const code = prompt("Enter the secret code to share with customer:");
-      if (!code) return;
+      const code = prompt('Enter the secret code (share this with your customer out-of-app):');
+      if (!code || !code.trim()) return;
 
       try {
         const res = await fetch('/api/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secretCode: code })
+          body: JSON.stringify({ secretCode: code.trim() }),
         });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
         window.location.href = `/session/${data.sessionId}?holder=${data.holderToken}`;
       } catch (err) {
         showError('Failed to create session');
@@ -223,19 +212,20 @@
 
     async function submitEmail() {
       const email = document.getElementById('email-input')?.value?.trim();
-      if (!email) {
-        showError('Please enter a valid email');
-        return;
-      }
+      if (!email) { showError('Please enter your email address'); return; }
 
       try {
         const res = await fetch(`/api/session/${state.sessionId}/customer-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email }),
         });
-        if (!res.ok) throw new Error('Failed to submit email');
-        document.getElementById('email-input').value = '';
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to submit email');
+        // Update local state immediately so customer sees waiting screen
+        state.customer.email = email;
+        state.status = 'pending_approval';
+        renderView();
       } catch (err) {
         showError(err.message);
       }
@@ -247,10 +237,11 @@
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${state.holderToken}`,
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'application/json',
+          },
         });
         if (!res.ok) throw new Error('Failed to approve');
+        // Socket event 'customer-approved' will update both screens
       } catch (err) {
         showError(err.message);
       }
@@ -258,67 +249,52 @@
 
     async function submitCode() {
       const code = document.getElementById('code-input')?.value?.trim();
-      if (!code) {
-        showError('Please enter the code');
-        return;
-      }
+      if (!code) { showError('Please enter the secret code'); return; }
 
       try {
-        const res = await fetch(`/api/session/${state.sessionId}/verify-code`, {
+        const res = await fetch(`/api/session/${state.sessionId}/submit-code`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code })
+          body: JSON.stringify({ code }),
         });
-        if (res.ok) {
-          showSuccess('Code verified!');
-          document.getElementById('code-input').value = '';
-        } else {
-          const data = await res.json();
-          showError(data.error || 'Invalid code');
-          document.getElementById('code-input').value = '';
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to submit code');
+        // Move customer to waiting state immediately
+        state.status = 'pending_code_approval';
+        state.codeWasRejected = false;
+        renderView();
       } catch (err) {
         showError(err.message);
       }
     }
 
-    async function sendSecretValue() {
+    async function approveCode() {
       try {
-        const res = await fetch(`/api/session/${state.sessionId}/send-secret-value`, {
+        const res = await fetch(`/api/session/${state.sessionId}/approve-code`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${state.holderToken}`,
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'application/json',
+          },
         });
-        const data = await res.json();
-        showSuccess(`Email sent with secret value!`);
+        if (!res.ok) throw new Error('Failed to approve code');
+        // Socket event 'code-approved' will update both screens
       } catch (err) {
         showError(err.message);
       }
     }
 
-    async function submitValue() {
-      const value = document.getElementById('value-input')?.value?.trim();
-      if (!value) {
-        showError('Please enter the value from email');
-        return;
-      }
-
+    async function rejectCode() {
       try {
-        const res = await fetch(`/api/session/${state.sessionId}/verify-value`, {
+        const res = await fetch(`/api/session/${state.sessionId}/reject-code`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value })
+          headers: {
+            'Authorization': `Bearer ${state.holderToken}`,
+            'Content-Type': 'application/json',
+          },
         });
-        if (res.ok) {
-          showSuccess('Value verified! You are now verified.');
-          document.getElementById('value-input').value = '';
-        } else {
-          const data = await res.json();
-          showError(data.error || 'Invalid value');
-          document.getElementById('value-input').value = '';
-        }
+        if (!res.ok) throw new Error('Failed to reject code');
+        // Socket event 'code-rejected' will update both screens
       } catch (err) {
         showError(err.message);
       }
@@ -326,22 +302,19 @@
 
     async function sendMessage() {
       const message = document.getElementById('message-input')?.value?.trim();
-      if (!message) {
-        showError('Please enter a message');
-        return;
-      }
+      if (!message) { showError('Please enter a message'); return; }
 
       try {
         const res = await fetch(`/api/session/${state.sessionId}/send-message`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${state.holderToken}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ message })
+          body: JSON.stringify({ message }),
         });
         if (!res.ok) throw new Error('Failed to send message');
-        showSuccess('Message sent!');
+        showSuccess('Secret message sent!');
         document.getElementById('message-input').value = '';
       } catch (err) {
         showError(err.message);
@@ -349,21 +322,21 @@
     }
 
     function copyMessage() {
-      if (state.messageExpired) return;
+      if (state.messageExpired || !state.secretMessage) return;
       navigator.clipboard.writeText(state.secretMessage);
       showSuccess('Message copied to clipboard!');
     }
 
     // ============ RENDER HOME ============
     function renderHome() {
-      const app = document.getElementById('app');
-      app.innerHTML = `
+      document.getElementById('app').innerHTML = `
         <div class="max-w-md w-full">
           <div class="bg-white rounded-2xl p-8 shadow-2xl text-center fade-in">
-            <h1 class="text-5xl font-bold text-gray-800 mb-2">🔐</h1>
+            <p class="text-5xl mb-4">🔐🗝️</p>
             <h2 class="text-3xl font-bold text-gray-800 mb-4">Secret Verify</h2>
             <p class="text-gray-600 mb-8">Secure secret sharing between holder and customer</p>
-            <button onclick="createSession()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition">
+            <button onclick="createSession()"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition">
               Create New Session
             </button>
           </div>
@@ -375,63 +348,88 @@
     function renderHolderView() {
       const app = document.getElementById('app');
       let content = `
-        <div class="max-w-2xl w-full">
+        <div class="max-w-lg w-full">
           <div class="bg-white rounded-2xl p-8 shadow-2xl fade-in">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6">Holder Dashboard</h2>
-            
-            <div class="bg-gray-100 p-6 rounded-xl mb-6">
-              <p class="text-gray-600 mb-2 font-semibold">Session ID:</p>
-              <p class="font-mono text-lg bg-white p-4 rounded-lg text-blue-600 break-all">${state.sessionId}</p>
-            </div>
-
-            <div class="bg-gray-100 p-6 rounded-xl mb-6">
-              <p class="text-gray-600 mb-2 font-semibold">Status: <span class="text-blue-600 font-bold">${state.status.toUpperCase()}</span></p>
+            <h2 class="text-2xl font-bold text-gray-800 mb-1">🔐 Holder Dashboard</h2>
+            <p class="text-sm text-gray-500 mb-6">Session: <span class="font-mono text-blue-600">${state.sessionId}</span></p>
       `;
 
-      if (state.customer.email) {
+      // ── STEP: Waiting for customer to join ──
+      if (state.status === 'pending') {
         content += `
-          <p class="text-gray-600 mb-2 mt-4 font-semibold">Customer Email:</p>
-          <p class="font-mono bg-white p-3 rounded-lg text-blue-600">${state.customer.email}</p>
-        `;
-
-        if (!state.customer.emailApproved) {
-          content += `
-            <button onclick="approveCustomer()" class="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition">
-              ✓ Approve Customer
-            </button>
-          `;
-        }
-      } else {
-        content += `<p class="text-gray-500 italic mt-4">Waiting for customer to submit email...</p>`;
-      }
-
-      content += `</div>`;
-
-      if (state.status === 'code_entry' && state.customer.emailApproved) {
-        content += `
-          <div class="bg-gray-100 p-6 rounded-xl mb-6">
-            <p class="text-gray-600 mb-2 font-semibold">Code Attempts: <span class="text-yellow-600">${state.codeAttempts}/${state.maxCodeAttempts}</span></p>
-            <p class="text-gray-500 text-sm">Waiting for customer to enter code...</p>
+          <div class="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+            ${loadingSpinner('Waiting for customer to open the session link...')}
           </div>
         `;
       }
 
-      if (state.status === 'code_entry' && state.customer.emailApproved && state.codeAttempts > 0) {
+      // ── STEP: Customer submitted email → holder approves ──
+      if (state.status === 'pending_approval') {
         content += `
-          <button onclick="sendSecretValue()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-lg mb-6 transition">
-            📧 Send Secret Value Email
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-4">
+            <p class="text-gray-600 font-semibold mb-1">Customer Email:</p>
+            <p class="font-mono text-lg bg-white px-4 py-3 rounded-lg text-blue-700 border border-blue-200 break-all">
+              ${state.customer.email}
+            </p>
+            <p class="text-sm text-gray-500 mt-3">Verify this is the correct customer, then approve.</p>
+          </div>
+          <button onclick="approveCustomer()"
+            class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition">
+            ✓ Approve Email
           </button>
         `;
       }
 
+      // ── STEP: Email approved → waiting for customer to enter code ──
+      if (state.status === 'code_entry') {
+        content += `
+          <div class="bg-gray-50 border border-gray-200 rounded-xl p-6">
+            <p class="text-gray-600 font-semibold mb-1">Customer Email:</p>
+            <p class="font-mono text-blue-600 mb-4">${state.customer.email}</p>
+            ${loadingSpinner('Waiting for customer to enter the secret code...')}
+          </div>
+        `;
+      }
+
+      // ── STEP: Customer submitted code → holder sees it and decides ──
+      if (state.status === 'pending_code_approval') {
+        content += `
+          <div class="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-6 mb-4">
+            <p class="text-gray-600 font-semibold mb-1">Customer's Submitted Code:</p>
+            <p class="font-mono text-2xl font-bold text-center text-yellow-700 bg-white px-4 py-4 rounded-lg border border-yellow-300 tracking-widest mt-2">
+              ${state.customerCode || '—'}
+            </p>
+            <p class="text-sm text-gray-500 mt-3 text-center">Compare this with your secret code and decide.</p>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="approveCode()"
+              class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition">
+              ✓ Approve
+            </button>
+            <button onclick="rejectCode()"
+              class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition">
+              ✗ Reject / Retry
+            </button>
+          </div>
+        `;
+      }
+
+      // ── STEP: Verified → send secret message ──
       if (state.status === 'verified') {
         content += `
-          <div class="bg-gray-100 p-6 rounded-xl mb-6">
-            <label class="text-gray-600 mb-2 block font-semibold">Send Secret Message:</label>
-            <textarea id="message-input" placeholder="Type your secret message..." maxlength="5000" class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-800 h-32 mb-3 focus:outline-none focus:border-blue-600"></textarea>
-            <p class="text-xs text-gray-500 mb-3">Message will expire after 60 seconds</p>
-            <button onclick="sendMessage()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition">
-              📤 Send Message
+          <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 text-center">
+            <p class="text-green-700 font-semibold">✅ Customer Verified — ${state.customer.email}</p>
+          </div>
+          <div class="bg-gray-50 border border-gray-200 rounded-xl p-6">
+            <label class="text-gray-700 font-semibold block mb-2">Send Secret Message:</label>
+            <textarea id="message-input" placeholder="Type your secret message here..."
+              maxlength="5000"
+              class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-800 h-32 mb-3
+                     focus:outline-none focus:border-blue-500 resize-none"></textarea>
+            <p class="text-xs text-gray-400 mb-3">⚠️ Message will expire 60 seconds after sending.</p>
+            <button onclick="sendMessage()"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition">
+              📤 Send Secret Message
             </button>
           </div>
         `;
@@ -445,157 +443,69 @@
     function renderCustomerView() {
       const app = document.getElementById('app');
       let content = `
-        <div class="max-w-2xl w-full">
+        <div class="max-w-md w-full">
           <div class="bg-white rounded-2xl p-8 shadow-2xl fade-in">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6">Verify Your Identity</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Verify Your Identity</h2>
       `;
 
-      // Step 1: Email entry
+      // ── STEP 1: Enter email ──
       if (state.status === 'pending') {
         content += `
-          <div class="mb-6">
-            <label class="text-gray-600 mb-2 block font-semibold">Step 1: Enter Your Email</label>
-            <input id="email-input" type="email" placeholder="your@email.com" class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800 text-lg focus:outline-none focus:border-blue-600">
-            <button onclick="submitEmail()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition">Submit Email</button>
-          </div>
-        `;
-      }
-
-      // Step 1 waiting
-      if (!state.customer.emailApproved && state.customer.email) {
-        content += `
-          <div class="mb-6 text-center">
-            <p class="text-gray-600">Email submitted: <span class="text-blue-600 font-mono">${state.customer.email}</span></p>
-            <p class="text-gray-500 italic mt-3 pulse-animate">Waiting for holder approval...</p>
-          </div>
-        `;
-      }
-
-      // Step 2: Code entry
-      if (state.status === 'code_entry') {
-        const attemptsLeft = state.maxCodeAttempts - state.codeAttempts;
-        content += `
-          <div class="mb-6">
-            <label class="text-gray-600 mb-2 block font-semibold">Step 2: Enter Secret Code</label>
-            <p class="text-sm text-gray-500 mb-3">Attempts left: <span class="text-yellow-600 font-bold">${attemptsLeft}</span></p>
-            <input id="code-input" type="password" placeholder="••••••••" maxlength="50" class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800 text-lg text-center font-mono tracking-widest focus:outline-none focus:border-blue-600">
-            <button onclick="submitCode()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition" ${attemptsLeft === 0 ? 'disabled' : ''}>
-              Verify Code
+          <div>
+            <label class="text-gray-600 block font-semibold mb-1">Step 1: Enter Your Email</label>
+            <p class="text-sm text-gray-400 mb-4">This confirms who you are to the holder.</p>
+            <input id="email-input" type="email" placeholder="your@email.com"
+              class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800 text-lg
+                     focus:outline-none focus:border-blue-500 mb-4">
+            <button onclick="submitEmail()"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition">
+              Submit Email
             </button>
           </div>
         `;
       }
 
-      // Step 3: Value entry
-      if (state.status === 'value_entry') {
-        const timeRemaining = getTimeRemaining(state.valueExpiresAt);
-        const timerColor = timeRemaining < 10 ? 'text-red-600' : 'text-blue-600';
-        
-        if (!state.valueExpired) {
-          content += `
-            <div class="mb-6">
-              <label class="text-gray-600 mb-2 block font-semibold">Step 3: Enter Secret Value</label>
-              <p class="text-sm text-gray-500 mb-3">Check your email for the code</p>
-              <div class="bg-yellow-100 p-4 rounded-lg mb-4 text-center border-2 border-yellow-300">
-                <p class="${timerColor} font-bold text-2xl">⏱️ ${timeRemaining}s</p>
-              </div>
-              <input id="value-input" type="password" placeholder="••••••••••" maxlength="50" class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800 text-lg text-center font-mono tracking-widest focus:outline-none focus:border-blue-600">
-              <button onclick="submitValue()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition">
-                Verify Value
-              </button>
-            </div>
-          `;
-        } else {
-          content += `
-            <div class="mb-6 text-center bg-red-100 p-6 rounded-lg border-2 border-red-300">
-              <p class="text-red-600 text-lg font-bold">⏱️ Secret value expired!</p>
-              <p class="text-red-500 text-sm mt-2">Ask the holder to send a new one</p>
-            </div>
-          `;
-        }
+      // ── STEP 1 waiting: holder has not approved yet ──
+      if (state.status === 'pending_approval') {
+        content += `
+          <div class="text-center">
+            <p class="text-gray-600 mb-1">Email submitted:</p>
+            <p class="font-mono text-blue-600 font-semibold mb-6">${state.customer.email || ''}</p>
+            ${loadingSpinner('Waiting for holder to approve your email...')}
+          </div>
+        `;
       }
 
-      // Step 4: Message display
+      // ── STEP 2: Code entry (immediately after holder approves email) ──
+      if (state.status === 'code_entry') {
+        content += `
+          <div>
+            <label class="text-gray-600 block font-semibold mb-1">Step 2: Enter Secret Code</label>
+            ${state.codeWasRejected
+              ? `<p class="text-sm text-red-500 font-semibold mb-3">❌ Incorrect — please try again.</p>`
+              : `<p class="text-sm text-gray-400 mb-3">Enter the code you received from the holder.</p>`
+            }
+            <input id="code-input" type="password" placeholder="••••••••"
+              maxlength="100"
+              class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800
+                     text-lg text-center font-mono tracking-widest focus:outline-none focus:border-blue-500 mb-4">
+            <button onclick="submitCode()"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition">
+              Submit Code
+            </button>
+          </div>
+        `;
+      }
+
+      // ── STEP 2 waiting: holder reviewing submitted code ──
+      if (state.status === 'pending_code_approval') {
+        content += `
+          <div class="text-center">
+            ${loadingSpinner('Verifying your code with the holder...')}
+          </div>
+        `;
+      }
+
+      // ── STEP 3: Verified — waiting for / showing secret message ──
       if (state.status === 'verified') {
-        const timeRemaining = state.secretMessageExpiresAt ? getTimeRemaining(state.secretMessageExpiresAt) : 0;
-        const timerColor = timeRemaining < 10 ? 'text-red-600' : 'text-blue-600';
-
-        if (state.secretMessage && !state.messageExpired) {
-          content += `
-            <div class="mb-6">
-              <label class="text-gray-600 mb-2 block font-semibold">Your Secret Message:</label>
-              <div class="bg-green-50 border-2 border-green-500 p-6 rounded-lg mb-4">
-                <p class="text-gray-800 text-lg leading-relaxed break-words">${state.secretMessage}</p>
-              </div>
-              <div class="bg-yellow-100 p-4 rounded-lg mb-4 text-center border-2 border-yellow-300">
-                <p class="${timerColor} font-bold text-2xl">⏱️ ${timeRemaining}s</p>
-              </div>
-              <button onclick="copyMessage()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-lg transition">
-                📋 Copy Message
-              </button>
-            </div>
-          `;
-        } else if (state.messageExpired) {
-          content += `
-            <div class="mb-6 text-center bg-red-100 p-6 rounded-lg border-2 border-red-300">
-              <p class="text-red-600 text-lg font-bold">⏱️ Message has expired</p>
-              <p class="text-red-500 text-sm mt-2">You can no longer view this message</p>
-            </div>
-          `;
-        } else {
-          content += `
-            <div class="mb-6 text-center">
-              <p class="text-gray-500 italic pulse-animate">Waiting for holder to send secret message...</p>
-            </div>
-          `;
-        }
-      }
-
-      content += `</div></div>`;
-      app.innerHTML = content;
-    }
-
-    // ============ MAIN RENDER ============
-    function render() {
-      if (!state.sessionId) {
-        renderHome();
-        return;
-      }
-
-      const now = Date.now();
-      if (now - state.lastUpdateTime < 500) {
-        return; // Throttle renders
-      }
-      state.lastUpdateTime = now;
-
-      fetch(`/api/session/${state.sessionId}`, {
-        headers: state.holderToken ? { 'Authorization': `Bearer ${state.holderToken}` } : {}
-      })
-      .then(r => r.json())
-      .then(data => {
-        state.isHolder = data.isHolder || !!state.holderToken;
-        state.status = data.status;
-        state.customer = data.customer;
-        state.codeAttempts = data.codeAttempts;
-        state.maxCodeAttempts = data.maxCodeAttempts;
-        state.secretMessage = data.secretMessage;
-        state.secretMessageExpiresAt = data.secretMessageExpiresAt ? new Date(data.secretMessageExpiresAt) : null;
-
-        if (state.isHolder) {
-          renderHolderView();
-        } else {
-          renderCustomerView();
-        }
-      })
-      .catch(err => {
-        console.error('Render error:', err);
-      });
-    }
-
-    // ============ INIT ============
-    initSocket();
-    render();
-    setInterval(render, 2000);
-  </script>
-</body>
-</html>
+        if (state.secretMessage && !st
