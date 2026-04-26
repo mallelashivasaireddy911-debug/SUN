@@ -294,6 +294,30 @@ app.post('/api/session/:sessionId/send-message', (req, res) => {
   }
 });
 
+// ============ NEW: RESTART SESSION - RESET FOR CUSTOMER ============
+app.post('/api/session/:sessionId/restart', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = getSession(sessionId);
+
+    // Reset ONLY customer data (keep session, code, holder token)
+    session.customer = { email: null, emailApproved: false };
+    session.customerCode = null;
+    session.codeApproved = false;
+    session.codeRejected = false;
+    session.secretMessage = null;
+    session.secretMessageExpiresAt = null;
+
+    console.log(`[↻] Session restarted: ${sessionId}`);
+    io.to(`session-${sessionId}`).emit('session-restarted', {});
+
+    res.json({ message: 'Session restarted. Please submit your email again.' });
+  } catch (err) {
+    console.error('Error restarting session:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ============ WEBSOCKET ============
 
 io.on('connection', (socket) => {
@@ -324,10 +348,11 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           🔐 SECRET VERIFY - V15                          ║
+║           🔐 SECRET VERIFY - V16 (With Restart)           ║
 ║                                                            ║
 ║  Flow: Email → Holder Approves Email → Customer Enters    ║
 ║        Code → Holder Approves/Rejects → Secret Message    ║
+║        → Message Expires → RESTART CAPABILITY ✨           ║
 ║                                                            ║
 ║  No email sending. All decisions made manually by holder. ║
 ║  Server running on port: ${PORT}                              ║

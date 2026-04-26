@@ -585,6 +585,7 @@
               <div class="panel center" style="border-color:#fde68a; background:#fffbeb;">
                 <p class="bold yellow mb-2">⏰ Message expired</p>
                 <p class="small muted">The secret message is no longer available.</p>
+                <button id="btn-restart" class="btn btn-blue" type="button" style="margin-top: 16px;">🔄 Send Email Again</button>
               </div>
             `;
           } else {
@@ -750,6 +751,22 @@
             copyText(S.secretMessage, "Message copied!");
           };
         }
+
+        // ============ NEW: RESTART BUTTON HANDLER ============
+        const btnRestart = document.getElementById("btn-restart");
+        if (btnRestart) {
+          btnRestart.onclick = async function () {
+            setBusy("btn-restart", "Restarting…");
+            try {
+              const { response, data } = await postJson("/api/session/" + SESSION_ID + "/restart", {});
+              if (!response.ok) throw new Error((data && data.error) || "Unable to restart session");
+              // No need to update state here - socket event will handle it
+            } catch (err) {
+              showToast(err.message || "Unable to restart session", "error");
+              setReady("btn-restart", "🔄 Send Email Again");
+            }
+          };
+        }
       }
 
       async function hydrateSession() {
@@ -836,6 +853,22 @@
             S.msgExpired = false;
             startTimer();
             if (!S.isHolder) showToast("Secret message received!", "success");
+            draw();
+          });
+
+          // ============ NEW: RESTART SESSION LISTENER ============
+          socket.on("session-restarted", function () {
+            console.log("[↻] Session restarted");
+            S.customer.email = null;
+            S.customer.emailApproved = false;
+            S.customerCode = null;
+            S.codeApproved = false;
+            S.codeRejected = false;
+            S.secretMessage = null;
+            S.secretMessageExpiresAt = null;
+            S.msgExpired = false;
+            S.status = "pending";
+            if (!S.isHolder) showToast("Session restarted! Send email again.", "success");
             draw();
           });
 
