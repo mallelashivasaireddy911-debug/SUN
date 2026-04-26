@@ -55,14 +55,34 @@
     any JavaScript runs. JS only takes over for /session/... pages.
   -->
   <div id="app" class="min-h-screen flex items-center justify-center p-4">
-    <div id="home-static" class="max-w-md w-full">
-      <div class="bg-white rounded-2xl p-8 shadow-2xl text-center">
-        <p class="text-5xl mb-4">🔐🗝️</p>
-        <h2 class="text-3xl font-bold text-gray-800 mb-4">Secret Verify</h2>
-        <p class="text-gray-600 mb-8">Secure secret sharing between holder and customer</p>
+    <div class="max-w-md w-full">
+      <div class="bg-white rounded-2xl p-8 shadow-2xl">
+        <div class="text-center mb-6">
+          <p class="text-5xl mb-3">🔐🗝️</p>
+          <h2 class="text-3xl font-bold text-gray-800 mb-2">Secret Verify</h2>
+          <p class="text-gray-500 text-sm">Secure secret sharing between holder and customer</p>
+        </div>
+
+        <div class="mb-5">
+          <label class="text-gray-700 font-semibold block mb-1">Your Secret Code</label>
+          <p class="text-xs text-gray-400 mb-2">
+            This is the code you'll compare against what the customer enters.
+            Share it with them manually (out of this app).
+          </p>
+          <input id="secret-code-input"
+            type="text"
+            placeholder="e.g. APPLE123"
+            maxlength="100"
+            autocomplete="off"
+            class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-800
+                   text-center font-mono text-xl tracking-widest
+                   focus:outline-none focus:border-blue-500">
+        </div>
+
         <button id="create-btn"
           onclick="createSession()"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition">
+          class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800
+                 text-white font-bold py-4 px-6 rounded-xl transition text-lg">
           Create New Session
         </button>
       </div>
@@ -203,20 +223,32 @@
     // ============ API CALLS ============
 
     async function createSession() {
-      const code = prompt('Enter the secret code (share this with your customer out-of-app):');
-      if (!code || !code.trim()) return;
+      const input = document.getElementById('secret-code-input');
+      const code = input ? input.value.trim() : '';
+
+      if (!code) {
+        showError('Please enter a secret code first');
+        if (input) input.focus();
+        return;
+      }
+
+      // Visual feedback while creating
+      const btn = document.getElementById('create-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating session...'; }
 
       try {
         const res = await fetch('/api/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secretCode: code.trim() }),
+          body: JSON.stringify({ secretCode: code }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed');
+        if (!res.ok) throw new Error(data.error || 'Server error');
+        // Redirect holder to their dashboard
         window.location.href = `/session/${data.sessionId}?holder=${data.holderToken}`;
       } catch (err) {
-        showError('Failed to create session');
+        showError('Failed to create session: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Create New Session'; }
       }
     }
 
@@ -337,16 +369,48 @@
       showSuccess('Message copied to clipboard!');
     }
 
+    function copyCustomerLink() {
+      const link = `${window.location.origin}/session/${state.sessionId}`;
+      navigator.clipboard.writeText(link).then(() => {
+        showSuccess('Customer link copied! Share this with your customer.');
+      }).catch(() => {
+        // Fallback for browsers that block clipboard
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        showSuccess('Customer link copied!');
+      });
+    }
+
     // ============ RENDER HOME ============
     function renderHome() {
       document.getElementById('app').innerHTML = `
         <div class="max-w-md w-full">
-          <div class="bg-white rounded-2xl p-8 shadow-2xl text-center fade-in">
-            <p class="text-5xl mb-4">🔐🗝️</p>
-            <h2 class="text-3xl font-bold text-gray-800 mb-4">Secret Verify</h2>
-            <p class="text-gray-600 mb-8">Secure secret sharing between holder and customer</p>
-            <button onclick="createSession()"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition">
+          <div class="bg-white rounded-2xl p-8 shadow-2xl fade-in">
+            <div class="text-center mb-6">
+              <p class="text-5xl mb-3">🔐🗝️</p>
+              <h2 class="text-3xl font-bold text-gray-800 mb-2">Secret Verify</h2>
+              <p class="text-gray-500 text-sm">Secure secret sharing between holder and customer</p>
+            </div>
+            <div class="mb-5">
+              <label class="text-gray-700 font-semibold block mb-1">Your Secret Code</label>
+              <p class="text-xs text-gray-400 mb-2">
+                Share this with your customer out of the app.
+              </p>
+              <input id="secret-code-input" type="text" placeholder="e.g. APPLE123"
+                maxlength="100" autocomplete="off"
+                class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-800
+                       text-center font-mono text-xl tracking-widest
+                       focus:outline-none focus:border-blue-500">
+            </div>
+            <button id="create-btn" onclick="createSession()"
+              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800
+                     text-white font-bold py-4 px-6 rounded-xl transition text-lg">
               Create New Session
             </button>
           </div>
@@ -357,11 +421,24 @@
     // ============ RENDER HOLDER ============
     function renderHolderView() {
       const app = document.getElementById('app');
+      const customerLink = `${window.location.origin}/session/${state.sessionId}`;
       let content = `
         <div class="max-w-lg w-full">
           <div class="bg-white rounded-2xl p-8 shadow-2xl fade-in">
             <h2 class="text-2xl font-bold text-gray-800 mb-1">🔐 Holder Dashboard</h2>
-            <p class="text-sm text-gray-500 mb-6">Session: <span class="font-mono text-blue-600">${state.sessionId}</span></p>
+            <p class="text-xs text-gray-400 mb-5">Session: <span class="font-mono">${state.sessionId}</span></p>
+
+            <!-- Customer link share box — always visible -->
+            <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
+              <p class="text-indigo-800 font-semibold text-sm mb-2">📤 Share this link with your customer:</p>
+              <p class="font-mono text-xs text-indigo-600 bg-white border border-indigo-200 rounded-lg px-3 py-2 break-all mb-3">
+                ${customerLink}
+              </p>
+              <button onclick="copyCustomerLink()"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm transition">
+                📋 Copy Customer Link
+              </button>
+            </div>
       `;
 
       // ── STEP: Waiting for customer to join ──
@@ -434,81 +511,4 @@
             <label class="text-gray-700 font-semibold block mb-2">Send Secret Message:</label>
             <textarea id="message-input" placeholder="Type your secret message here..."
               maxlength="5000"
-              class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-800 h-32 mb-3
-                     focus:outline-none focus:border-blue-500 resize-none"></textarea>
-            <p class="text-xs text-gray-400 mb-3">⚠️ Message will expire 60 seconds after sending.</p>
-            <button onclick="sendMessage()"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition">
-              📤 Send Secret Message
-            </button>
-          </div>
-        `;
-      }
-
-      content += `</div></div>`;
-      app.innerHTML = content;
-    }
-
-    // ============ RENDER CUSTOMER ============
-    function renderCustomerView() {
-      const app = document.getElementById('app');
-      let content = `
-        <div class="max-w-md w-full">
-          <div class="bg-white rounded-2xl p-8 shadow-2xl fade-in">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Verify Your Identity</h2>
-      `;
-
-      // ── STEP 1: Enter email ──
-      if (state.status === 'pending') {
-        content += `
-          <div>
-            <label class="text-gray-600 block font-semibold mb-1">Step 1: Enter Your Email</label>
-            <p class="text-sm text-gray-400 mb-4">This confirms who you are to the holder.</p>
-            <input id="email-input" type="email" placeholder="your@email.com"
-              class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800 text-lg
-                     focus:outline-none focus:border-blue-500 mb-4">
-            <button onclick="submitEmail()"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition">
-              Submit Email
-            </button>
-          </div>
-        `;
-      }
-
-      // ── STEP 1 waiting: holder has not approved yet ──
-      if (state.status === 'pending_approval') {
-        content += `
-          <div class="text-center">
-            <p class="text-gray-600 mb-1">Email submitted:</p>
-            <p class="font-mono text-blue-600 font-semibold mb-6">${state.customer.email || ''}</p>
-            ${loadingSpinner('Waiting for holder to approve your email...')}
-          </div>
-        `;
-      }
-
-      // ── STEP 2: Code entry (immediately after holder approves email) ──
-      if (state.status === 'code_entry') {
-        content += `
-          <div>
-            <label class="text-gray-600 block font-semibold mb-1">Step 2: Enter Secret Code</label>
-            ${state.codeWasRejected
-              ? `<p class="text-sm text-red-500 font-semibold mb-3">❌ Incorrect — please try again.</p>`
-              : `<p class="text-sm text-gray-400 mb-3">Enter the code you received from the holder.</p>`
-            }
-            <input id="code-input" type="password" placeholder="••••••••"
-              maxlength="100"
-              class="w-full border-2 border-gray-300 rounded-lg px-5 py-4 text-gray-800
-                     text-lg text-center font-mono tracking-widest focus:outline-none focus:border-blue-500 mb-4">
-            <button onclick="submitCode()"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition">
-              Submit Code
-            </button>
-          </div>
-        `;
-      }
-
-      // ── STEP 2 waiting: holder reviewing submitted code ──
-      if (state.status === 'pending_code_approval') {
-        content += `
-          <div class="text-center">
-            $
+              class="w-full border-2 border-gra
