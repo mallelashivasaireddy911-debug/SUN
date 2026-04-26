@@ -113,8 +113,11 @@ async function onCreateClick() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
+    const BASE_URL = location.origin.includes('localhost')
+      ? 'http://localhost:8080'
+      : location.origin;
 
-    const res = await fetch('/api/create-session', {
+    const res = await fetch(BASE_URL + '/api/create-session', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ secretCode: code }),
@@ -125,7 +128,7 @@ async function onCreateClick() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Server error ' + res.status);
 
-    window.location.href = '/session/' + data.sessionId + '?holder=' + data.holderToken;
+    window.location.href = BASE_URL + '/session/' + data.sessionId + '?holder=' + data.holderToken;
 
   } catch (err) {
     const msg = err.name === 'AbortError'
