@@ -1,474 +1,868 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🔐 Secret Verify</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!--
-    socket.io is loaded ONLY for session pages, dynamically inside JS below.
-    Loading it globally on the home page caused io() to fire, connect to server,
-    and socket event handlers would call renderView() which destroyed the static
-    home HTML including the Create button — leaving the page dead.
-  -->
+
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg1: #667eea;
+      --bg2: #764ba2;
+      --white: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --yellow: #ca8a04;
+      --indigo: #4f46e5;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; }
     body {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+      color: var(--text);
+    }
+
+    .page {
       min-height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
     }
+
+    .card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+
+    .card--wide { max-width: 720px; }
+
+    .center { text-align: center; }
+    .stack { display: grid; gap: 14px; }
+    .mt-6 { margin-top: 24px; }
+    .mb-2 { margin-bottom: 8px; }
+    .mb-3 { margin-bottom: 12px; }
+    .mb-4 { margin-bottom: 16px; }
+    .mb-5 { margin-bottom: 20px; }
+    .mb-6 { margin-bottom: 24px; }
+
+    .title {
+      font-size: 2rem;
+      line-height: 1.1;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #374151;
+    }
+
+    .hint {
+      color: #9ca3af;
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+
+    .input, .textarea {
+      width: 100%;
+      border: 2px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 1rem;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .input:focus, .textarea:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
+    }
+
+    .input--center {
+      text-align: center;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      letter-spacing: 0.1em;
+    }
+
+    .textarea {
+      min-height: 128px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.06s ease, opacity 0.15s ease, background 0.15s ease;
+      color: #fff;
+      user-select: none;
+    }
+
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    .btn-blue { background: var(--blue); }
+    .btn-green { background: var(--green); }
+    .btn-red { background: #ef4444; }
+    .btn-indigo { background: var(--indigo); }
+    .btn-dark { background: #111827; }
+
+    .panel {
+      border-radius: 14px;
+      padding: 16px;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+    }
+
+    .panel-blue { border-color: #bfdbfe; background: #eff6ff; }
+    .panel-green { border-color: #bbf7d0; background: #f0fdf4; }
+    .panel-yellow { border: 2px solid #facc15; background: #fffbeb; }
+    .panel-indigo { border-color: #c7d2fe; background: #eef2ff; }
+    .panel-gray { border-color: #e5e7eb; background: #f9fafb; }
+
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      word-break: break-word;
+    }
+
+    .small { font-size: 0.875rem; }
+    .xs { font-size: 0.75rem; }
+    .bold { font-weight: 800; }
+    .muted { color: var(--muted); }
+    .blue { color: #1d4ed8; }
+    .green { color: #15803d; }
+    .red { color: #dc2626; }
+    .yellow { color: #a16207; }
+    .indigo { color: #4338ca; }
+
+    .spinner-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 58px;
+    }
+
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 4px solid rgba(37, 99, 235, 0.16);
+      border-top-color: var(--blue);
+      animation: spin 0.9s linear infinite;
+    }
+
     @keyframes spin { to { transform: rotate(360deg); } }
-    .spin { animation: spin 1s linear infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-    .pulse { animation: pulse 1.8s ease-in-out infinite; }
-    @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-    .fade-up { animation: fadeUp .25s ease-out; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .pulse { animation: pulse 1.7s ease-in-out infinite; }
+    .fade-up { animation: fadeUp 0.22s ease-out; }
+
     .toast {
-      position: fixed; top: 20px; right: 16px; left: 16px; max-width: 400px;
-      margin: 0 auto; padding: 14px 20px; border-radius: 10px; color: #fff;
-      font-weight: 600; font-size: 15px; z-index: 9999;
-      animation: fadeUp .25s ease-out; box-shadow: 0 4px 20px rgba(0,0,0,.25);
+      position: fixed;
+      top: 18px;
+      left: 16px;
+      right: 16px;
+      z-index: 9999;
+      max-width: 440px;
+      margin: 0 auto;
+      border-radius: 12px;
+      padding: 13px 16px;
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+      animation: fadeUp 0.22s ease-out;
+      text-align: center;
     }
-    .toast-error  { background: #dc2626; }
-    .toast-success{ background: #16a34a; }
+
+    .toast-success { background: #16a34a; }
+    .toast-error { background: #dc2626; }
+
+    .hidden { display: none !important; }
+
+    .session-header {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+
+    .session-id {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      word-break: break-all;
+    }
+
+    .link-box {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.78rem;
+      color: #4f46e5;
+      background: #fff;
+      border: 1px solid #c7d2fe;
+      border-radius: 12px;
+      padding: 10px 12px;
+      word-break: break-all;
+    }
+
+    .gap-3 { gap: 12px; }
+    .flex { display: flex; }
+    .flex-1 { flex: 1; }
+
+    @media (max-width: 480px) {
+      .card { padding: 22px; }
+      .title { font-size: 1.7rem; }
+      .button-row { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
 
-<div id="root" class="min-h-screen flex items-center justify-center p-4">
-
-  <!-- HOME CARD: static HTML, always visible on /, never touched by JS -->
-  <div id="home-card" class="max-w-md w-full">
-    <div class="bg-white rounded-2xl p-8 shadow-2xl">
-      <div class="text-center mb-7">
-        <p class="text-5xl mb-3">🔐🗝️</p>
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">Secret Verify</h1>
-        <p class="text-gray-400 text-sm">Secure secret sharing between holder and customer</p>
+  <div class="page">
+    <div id="home-card" class="card">
+      <div class="center mb-6">
+        <div style="font-size: 3rem; margin-bottom: 10px;">🔐🗝️</div>
+        <h1 class="title mb-2">Secret Verify</h1>
+        <p class="subtitle">Secure secret sharing between holder and customer</p>
       </div>
-      <label class="text-gray-700 font-semibold block mb-1">Your Secret Code</label>
-      <p class="text-xs text-gray-400 mb-3">
-        Share this code with your customer <strong>outside this app</strong>.
-        You will compare it manually when they submit theirs.
-      </p>
-      <input
-        id="code-home"
-        type="text"
-        placeholder="e.g. APPLE-7734"
-        maxlength="100"
-        autocomplete="off"
-        class="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-gray-800
-               text-center font-mono text-xl tracking-widest mb-5
-               focus:outline-none focus:border-blue-500"
-      >
-      <button
-        id="btn-create"
-        class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-lg
-               active:bg-blue-800 transition-colors select-none"
-        onclick="onCreateClick()"
-      >
-        Create New Session
-      </button>
-      <div id="home-err" class="mt-4 text-red-600 text-sm font-semibold text-center hidden"></div>
+
+      <div class="stack">
+        <div>
+          <label class="label">Your Secret Code</label>
+          <p class="hint mb-3">
+            Share this code with your customer outside this app. You will compare it manually when they submit theirs.
+          </p>
+          <input
+            id="code-home"
+            class="input input--center"
+            type="text"
+            placeholder="e.g. APPLE-7734"
+            maxlength="100"
+            autocomplete="off"
+          />
+        </div>
+
+        <button id="btn-create" class="btn btn-blue" type="button">
+          Create New Session
+        </button>
+
+        <div id="home-err" class="hidden" style="margin-top: 4px; color: var(--red); font-size: 0.9rem; font-weight: 700; text-align: center;"></div>
+      </div>
     </div>
+
+    <div id="session-card" class="card card--wide hidden"></div>
   </div>
 
-  <!-- SESSION CARD: injected by JS for /session/... URLs -->
-  <div id="session-card" class="max-w-lg w-full hidden"></div>
+  <script>
+    (function () {
+      "use strict";
 
-</div>
+      const root = document.getElementById("root");
+      const homeCard = document.getElementById("home-card");
+      const sessionCard = document.getElementById("session-card");
+      const codeHome = document.getElementById("code-home");
+      const btnCreate = document.getElementById("btn-create");
+      const homeErr = document.getElementById("home-err");
 
-<script>
-// ─────────────────────────────────────────────
-//  PAGE DETECTION
-// ─────────────────────────────────────────────
-const _params      = new URLSearchParams(window.location.search);
-const SESSION_ID   = (/\/session\/([^/?#]+)/.exec(window.location.pathname) || [])[1] || null;
-const HOLDER_TOKEN = _params.get('holder') || null;
+      const SESSION_ID = (/\/session\/([^/?#]+)/.exec(window.location.pathname) || [])[1] || null;
+      const HOLDER_TOKEN = new URLSearchParams(window.location.search).get("holder");
 
-// ─────────────────────────────────────────────
-//  HOME PAGE — Create Session
-// ─────────────────────────────────────────────
-async function onCreateClick() {
-  const input = document.getElementById('code-home');
-  const btn   = document.getElementById('btn-create');
-  const errEl = document.getElementById('home-err');
+      const S = {
+        isHolder: !!HOLDER_TOKEN,
+        status: "pending",
+        customerEmail: null,
+        customerCode: null,
+        codeRejected: false,
+        secretMessage: null,
+        secretExpiresAt: null,
+        msgExpired: false,
+        timerInterval: null,
+      };
 
-  const code = input.value.trim();
-  errEl.textContent = '';
-  errEl.classList.add('hidden');
-
-  if (!code) {
-    errEl.textContent = 'Please enter a secret code first.';
-    errEl.classList.remove('hidden');
-    input.focus();
-    return;
-  }
-
-  // Immediate visible feedback — confirms tap registered
-  btn.disabled = true;
-  btn.textContent = 'Creating session…';
-  btn.classList.add('opacity-70');
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
-    const BASE_URL = location.origin.includes('localhost')
-      ? 'http://localhost:8080'
-      : location.origin;
-
-    const res = await fetch(BASE_URL + '/api/create-session', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ secretCode: code }),
-      signal:  controller.signal,
-    });
-    clearTimeout(timer);
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Server error ' + res.status);
-
-    window.location.href = BASE_URL + '/session/' + data.sessionId + '?holder=' + data.holderToken;
-
-  } catch (err) {
-    const msg = err.name === 'AbortError'
-      ? 'Request timed out. Is the server running?'
-      : err.message;
-    errEl.textContent = '⚠ ' + msg;
-    errEl.classList.remove('hidden');
-    btn.disabled = false;
-    btn.textContent = 'Create New Session';
-    btn.classList.remove('opacity-70');
-  }
-}
-
-// Enter key on home input
-document.getElementById('code-home').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') onCreateClick();
-});
-
-// ─────────────────────────────────────────────
-//  SESSION PAGE
-// ─────────────────────────────────────────────
-if (SESSION_ID) {
-
-  // Swap cards
-  document.getElementById('home-card').classList.add('hidden');
-  const sessionCard = document.getElementById('session-card');
-  sessionCard.classList.remove('hidden');
-  sessionCard.innerHTML = loadingCard('Loading session…');
-
-  // State object
-  var S = {
-    isHolder:        !!HOLDER_TOKEN,
-    status:          'pending',
-    customerEmail:   null,
-    customerCode:    null,
-    codeRejected:    false,
-    secretMessage:   null,
-    secretExpiresAt: null,
-    msgExpired:      false,
-    timerInterval:   null,
-  };
-
-  // Dynamically load socket.io only here
-  var sioTag = document.createElement('script');
-  sioTag.src = 'https://cdn.socket.io/4.5.4/socket.io.min.js';
-  sioTag.onload  = startSession;
-  sioTag.onerror = function() {
-    sessionCard.innerHTML = errorCard('Failed to load Socket.io. Check your connection.', true);
-  };
-  document.head.appendChild(sioTag);
-
-  function startSession() {
-    var socket = io();
-    socket.emit('join-session', SESSION_ID);
-
-    socket.on('customer-submitted-email', function(d) {
-      S.customerEmail = d.email;
-      S.status = 'pending_approval';
-      draw();
-    });
-    socket.on('customer-approved', function() {
-      S.status = 'code_entry';
-      S.codeRejected = false;
-      if (!S.isHolder) toast('Email approved! Enter your secret code.', 'success');
-      draw();
-    });
-    socket.on('customer-submitted-code', function(d) {
-      S.customerCode = d.code;
-      S.status = 'pending_code_approval';
-      draw();
-    });
-    socket.on('code-approved', function() {
-      S.status = 'verified';
-      S.customerCode = null;
-      if (!S.isHolder) toast('Code verified! Waiting for secret message…', 'success');
-      draw();
-    });
-    socket.on('code-rejected', function() {
-      S.status = 'code_entry';
-      S.customerCode = null;
-      S.codeRejected = true;
-      if (!S.isHolder) toast('Incorrect code — please try again.', 'error');
-      draw();
-    });
-    socket.on('secret-message', function(d) {
-      S.secretMessage   = d.message;
-      S.secretExpiresAt = Date.now() + d.expiresIn * 1000;
-      S.msgExpired = false;
-      startTimer();
-      if (!S.isHolder) toast('Secret message received!', 'success');
-      draw();
-    });
-
-    // Hydrate state on load / page refresh
-    fetch('/api/session/' + SESSION_ID, {
-      headers: HOLDER_TOKEN ? { 'Authorization': 'Bearer ' + HOLDER_TOKEN } : {}
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      S.isHolder      = d.isHolder || !!HOLDER_TOKEN;
-      S.status        = d.status;
-      S.customerEmail = (d.customer && d.customer.email) || null;
-      S.customerCode  = d.customerCode || null;
-      S.secretMessage = d.secretMessage || null;
-      if (d.secretMessageExpiresAt) {
-        S.secretExpiresAt = new Date(d.secretMessageExpiresAt).getTime();
-        if (Date.now() > S.secretExpiresAt) { S.msgExpired = true; }
-        else { startTimer(); }
-      }
-      draw();
-    })
-    .catch(function() {
-      sessionCard.innerHTML = errorCard('Could not load session. It may have expired.', true);
-    });
-
-    // ── API actions (attached to window so onclick= can find them) ──
-
-    window.doSubmitEmail = async function() {
-      var el = document.getElementById('inp-email');
-      var email = el ? el.value.trim() : '';
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return toast('Enter a valid email address.', 'error');
-      }
-      disableBtn('btn-email', 'Submitting…');
-      try {
-        var r = await post('/api/session/' + SESSION_ID + '/customer-email', { email: email });
-        var body = await r.json();
-        if (!r.ok) throw new Error(body.error);
-        S.customerEmail = email;
-        S.status = 'pending_approval';
-        draw();
-      } catch(e) {
-        toast(e.message, 'error');
-        enableBtn('btn-email', 'Submit Email');
-      }
-    };
-
-    window.doApproveCustomer = async function() {
-      disableBtn('btn-approve-email', 'Approving…');
-      try {
-        var r = await authPost('/api/session/' + SESSION_ID + '/approve-customer');
-        if (!r.ok) throw new Error((await r.json()).error);
-        // socket event redraws both sides
-      } catch(e) {
-        toast(e.message, 'error');
-        enableBtn('btn-approve-email', '✓ Approve Email');
-      }
-    };
-
-    window.doSubmitCode = async function() {
-      var el = document.getElementById('inp-code');
-      var code = el ? el.value.trim() : '';
-      if (!code) return toast('Please enter the secret code.', 'error');
-      disableBtn('btn-code', 'Submitting…');
-      try {
-        var r = await post('/api/session/' + SESSION_ID + '/submit-code', { code: code });
-        var body = await r.json();
-        if (!r.ok) throw new Error(body.error);
-        S.status = 'pending_code_approval';
-        S.codeRejected = false;
-        draw();
-      } catch(e) {
-        toast(e.message, 'error');
-        enableBtn('btn-code', 'Submit Code');
-      }
-    };
-
-    window.doApproveCode = async function() {
-      disableBtn('btn-approve-code', 'Approving…');
-      try {
-        var r = await authPost('/api/session/' + SESSION_ID + '/approve-code');
-        if (!r.ok) throw new Error((await r.json()).error);
-      } catch(e) {
-        toast(e.message, 'error');
-        enableBtn('btn-approve-code', '✓ Approve');
-      }
-    };
-
-    window.doRejectCode = async function() {
-      disableBtn('btn-reject-code', 'Rejecting…');
-      try {
-        var r = await authPost('/api/session/' + SESSION_ID + '/reject-code');
-        if (!r.ok) throw new Error((await r.json()).error);
-      } catch(e) {
-        toast(e.message, 'error');
-        enableBtn('btn-reject-code', '✗ Reject');
-      }
-    };
-
-    window.doSendMessage = async function() {
-      var el = document.getElementById('inp-message');
-      var msg = el ? el.value.trim() : '';
-      if (!msg) return toast('Please type a message.', 'error');
-      disableBtn('btn-send', 'Sending…');
-      try {
-        var r = await authPost('/api/session/' + SESSION_ID + '/send-message', { message: msg });
-        if (!r.ok) throw new Error((await r.json()).error);
-        toast('Secret message sent!', 'success');
-        if (el) el.value = '';
-        enableBtn('btn-send', '📤 Send Secret Message');
-      } catch(e) {
-        toast(e.message, 'error');
-        enableBtn('btn-send', '📤 Send Secret Message');
-      }
-    };
-
-    window.doCopyLink = function() {
-      copyText(location.origin + '/session/' + SESSION_ID, 'Customer link copied!');
-    };
-
-    window.doCopyMessage = function() {
-      if (!S.secretMessage || S.msgExpired) return;
-      copyText(S.secretMessage, 'Message copied!');
-    };
-
-    // ── Draw ──
-    function draw() {
-      if (S.isHolder) drawHolder(); else drawCustomer();
-    }
-
-    function drawHolder() {
-      var link = location.origin + '/session/' + SESSION_ID;
-      var body = '';
-
-      if (S.status === 'pending') {
-        body = '<div class="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">'
-          + spinnerHTML()
-          + '<p class="text-gray-400 text-sm mt-3 pulse">Waiting for customer to open the link…</p>'
-          + '</div>';
-      }
-      else if (S.status === 'pending_approval') {
-        body = '<div class="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-4">'
-          + '<p class="text-gray-600 font-semibold text-sm mb-2">Customer Email:</p>'
-          + '<p class="font-mono text-lg font-bold text-blue-700 break-all">' + esc(S.customerEmail) + '</p>'
-          + '<p class="text-xs text-gray-400 mt-2">Confirm this is your customer, then approve.</p>'
-          + '</div>'
-          + '<button id="btn-approve-email" onclick="doApproveCustomer()" '
-          + 'class="w-full bg-green-600 text-white font-bold py-4 rounded-xl text-lg active:bg-green-800">'
-          + '✓ Approve Email</button>';
-      }
-      else if (S.status === 'code_entry') {
-        body = '<div class="bg-gray-50 border border-gray-200 rounded-xl p-5">'
-          + '<p class="text-gray-500 text-sm font-semibold mb-1">Approved:</p>'
-          + '<p class="font-mono text-blue-600 mb-4">' + esc(S.customerEmail) + '</p>'
-          + spinnerHTML()
-          + '<p class="text-gray-400 text-sm text-center mt-3 pulse">Waiting for customer to enter the code…</p>'
-          + '</div>';
-      }
-      else if (S.status === 'pending_code_approval') {
-        body = '<div class="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-5 mb-4">'
-          + '<p class="text-gray-600 font-semibold text-sm mb-2">Code submitted by customer:</p>'
-          + '<p class="font-mono text-3xl font-black text-center text-yellow-700 '
-          + 'bg-white px-4 py-5 rounded-xl border border-yellow-300 tracking-widest">'
-          + esc(S.customerCode || '—') + '</p>'
-          + '<p class="text-xs text-gray-400 text-center mt-3">Compare with your code and decide.</p>'
-          + '</div>'
-          + '<div class="flex gap-3">'
-          + '<button id="btn-approve-code" onclick="doApproveCode()" '
-          + 'class="flex-1 bg-green-600 text-white font-bold py-4 rounded-xl text-lg active:bg-green-800">✓ Approve</button>'
-          + '<button id="btn-reject-code" onclick="doRejectCode()" '
-          + 'class="flex-1 bg-red-500 text-white font-bold py-4 rounded-xl text-lg active:bg-red-700">✗ Reject</button>'
-          + '</div>';
-      }
-      else if (S.status === 'verified') {
-        body = '<div class="bg-green-50 border border-green-300 rounded-xl p-4 mb-5 text-center">'
-          + '<p class="text-green-700 font-bold">✅ ' + esc(S.customerEmail) + ' — Verified</p>'
-          + '</div>'
-          + '<label class="text-gray-700 font-semibold block mb-1">Send Secret Message</label>'
-          + '<p class="text-xs text-gray-400 mb-3">⚠ Customer sees it for 60 seconds only.</p>'
-          + '<textarea id="inp-message" maxlength="5000" placeholder="Type your secret message…" '
-          + 'class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-800 '
-          + 'h-32 mb-3 focus:outline-none focus:border-blue-500 resize-none"></textarea>'
-          + '<button id="btn-send" onclick="doSendMessage()" '
-          + 'class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-lg active:bg-blue-800">'
-          + '📤 Send Secret Message</button>';
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
       }
 
-      sessionCard.innerHTML = '<div class="bg-white rounded-2xl p-7 shadow-2xl fade-up">'
-        + '<h2 class="text-2xl font-bold text-gray-800 mb-1">🔐 Holder Dashboard</h2>'
-        + '<p class="text-xs text-gray-400 mb-5 font-mono">' + SESSION_ID + '</p>'
-        + '<div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">'
-        + '<p class="text-indigo-800 font-semibold text-sm mb-2">📤 Customer session link:</p>'
-        + '<p class="font-mono text-xs text-indigo-600 bg-white border border-indigo-200 '
-        + 'rounded-lg px-3 py-2 break-all mb-3">' + esc(link) + '</p>'
-        + '<button onclick="doCopyLink()" '
-        + 'class="w-full bg-indigo-600 text-white font-bold py-2 rounded-lg text-sm active:bg-indigo-800">'
-        + '📋 Copy Link</button></div>'
-        + body
-        + '</div>';
-    }
+      function showToast(message, type) {
+        const existing = document.querySelector(".toast");
+        if (existing) existing.remove();
 
-    function drawCustomer() {
-      var body = '';
+        const toast = document.createElement("div");
+        toast.className = "toast " + (type === "error" ? "toast-error" : "toast-success");
+        toast.textContent = message;
+        document.body.appendChild(toast);
 
-      if (S.status === 'pending') {
-        body = '<label class="text-gray-600 font-semibold block mb-1">Step 1 — Enter Your Email</label>'
-          + '<p class="text-xs text-gray-400 mb-4">So the holder can confirm who you are.</p>'
-          + '<input id="inp-email" type="email" placeholder="your@email.com" '
-          + 'class="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-gray-800 text-lg '
-          + 'mb-4 focus:outline-none focus:border-blue-500">'
-          + '<button id="btn-email" onclick="doSubmitEmail()" '
-          + 'class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-lg active:bg-blue-800">'
-          + 'Submit Email</button>';
+        setTimeout(() => toast.remove(), 2600);
       }
-      else if (S.status === 'pending_approval') {
-        body = '<p class="text-gray-500 text-sm mb-1">Email submitted:</p>'
-          + '<p class="font-mono text-blue-600 font-bold mb-6">' + esc(S.customerEmail) + '</p>'
-          + spinnerHTML()
-          + '<p class="text-gray-400 text-sm text-center mt-3 pulse">Waiting for holder to approve your email…</p>';
+
+      function loadingCard(message) {
+        return `
+          <div class="center panel panel-gray fade-up">
+            <div class="spinner-wrap"><div class="spinner"></div></div>
+            <p class="small muted pulse" style="margin-top: 12px;">${escapeHtml(message)}</p>
+          </div>
+        `;
       }
-      else if (S.status === 'code_entry') {
-        body = '<label class="text-gray-600 font-semibold block mb-1">Step 2 — Enter Secret Code</label>'
-          + (S.codeRejected
-              ? '<p class="text-sm text-red-500 font-bold mb-3">❌ Wrong code — please try again.</p>'
-              : '<p class="text-xs text-gray-400 mb-4">Enter the code you received from the holder.</p>')
-          + '<input id="inp-code" type="text" placeholder="Enter code" maxlength="100" autocomplete="off" '
-          + 'class="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-gray-800 '
-          + 'text-center font-mono text-xl tracking-widest mb-4 focus:outline-none focus:border-blue-500">'
-          + '<button id="btn-code" onclick="doSubmitCode()" '
-          + 'class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-lg active:bg-blue-800">'
-          + 'Submit Code</button>';
+
+      function errorCard(message) {
+        return `
+          <div class="center panel fade-up" style="border-color:#fecaca;background:#fef2f2;">
+            <p class="bold red" style="margin-bottom:8px;">⚠ Error</p>
+            <p class="small muted">${escapeHtml(message)}</p>
+          </div>
+        `;
       }
-      else if (S.status === 'pending_code_approval') {
-        body = spinnerHTML()
-          + '<p class="text-gray-400 text-sm text-center mt-3 pulse">Holder is verifying your code…</p>';
+
+      function spinnerOnly(message) {
+        return `
+          <div class="spinner-wrap"><div class="spinner"></div></div>
+          <p class="small muted pulse center" style="margin-top: 12px;">${escapeHtml(message)}</p>
+        `;
       }
-      else if (S.status === 'verified') {
-        if (S.secretMessage && !S.msgExpired) {
-          var secs = Math.max(0, Math.floor((S.secretExpiresAt - Date.now()) / 1000));
-          body = '<p class="text-gray-600 font-semibold mb-3">🔐 Secret Message:</p>'
-            + '<div class="bg-green-50 border-2 border-green-500 rounded-xl p-5 mb-4">'
-            + '<p class="text-gray-800 text-lg leading-relaxed break-words">' + esc(S.secretMessage) + '</p>'
-            + '</div>'
-            + '<div class="bg-yellow-50 border border-yellow-300 rounded-xl p-4 text-center mb-4">'
-            + '<p id="msg-timer" class="font-black text-3xl ' + (secs < 10 ? 'text-red-600' : 'text-blue-600') + '">'
-            + '⏱ ' + secs + 's</p>'
-            + '<p class="text-xs text-gray-400 mt-1">Message self-destructs</p>'
-            + '</div>'
-            + '<button onclick="doCopyMessage()" '
-            + 'class="w-full bg-green-600 text-white font-bold py-3 rounded-xl active:bg-green-800">'
-            + '📋 Copy Message</button>';
-        } else if (S.msgExpired) {
-         
+
+      function authHeaders() {
+        return HOLDER_TOKEN ? { Authorization: "Bearer " + HOLDER_TOKEN } : {};
+      }
+
+      async function postJson(url, body, extraHeaders) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: Object.assign({ "Content-Type": "application/json" }, extraHeaders || {}),
+          body: JSON.stringify(body || {}),
+        });
+
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (_) {
+          data = null;
+        }
+
+        return { response, data };
+      }
+
+      async function authPostJson(url, body) {
+        return postJson(url, body, authHeaders());
+      }
+
+      function clearTimer() {
+        if (S.timerInterval) {
+          clearInterval(S.timerInterval);
+          S.timerInterval = null;
+        }
+      }
+
+      function startTimer() {
+        clearTimer();
+        S.timerInterval = setInterval(function () {
+          if (!S.secretExpiresAt) return;
+          if (Date.now() >= S.secretExpiresAt) {
+            S.msgExpired = true;
+            S.secretMessage = null;
+            clearTimer();
+            draw();
+            return;
+          }
+          if (!S.isHolder) draw();
+          else {
+            const timer = document.getElementById("msg-timer");
+            if (timer) {
+              const secs = Math.max(0, Math.floor((S.secretExpiresAt - Date.now()) / 1000));
+              timer.textContent = "⏱ " + secs + "s";
+              timer.className = "bold " + (secs < 10 ? "red" : "blue");
+            }
+          }
+        }, 1000);
+      }
+
+      function copyText(text, successMessage) {
+        navigator.clipboard.writeText(text)
+          .then(() => showToast(successMessage, "success"))
+          .catch(function () {
+            showToast("Copy failed", "error");
+          });
+      }
+
+      function setBusy(buttonId, label) {
+        const btn = document.getElementById(buttonId);
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = label;
+      }
+
+      function setReady(buttonId, label) {
+        const btn = document.getElementById(buttonId);
+        if (!btn) return;
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+
+      async function createSession() {
+        const code = codeHome.value.trim();
+
+        homeErr.textContent = "";
+        homeErr.classList.add("hidden");
+
+        if (!code) {
+          homeErr.textContent = "Please enter a secret code first.";
+          homeErr.classList.remove("hidden");
+          codeHome.focus();
+          return;
+        }
+
+        setBusy("btn-create", "Creating session…");
+
+        try {
+          const { response, data } = await postJson("/api/create-session", { secretCode: code });
+          if (!response.ok) {
+            throw new Error((data && data.error) || ("Server error " + response.status));
+          }
+
+          window.location.href = "/session/" + data.sessionId + "?holder=" + data.holderToken;
+        } catch (err) {
+          homeErr.textContent = "⚠ " + (err && err.message ? err.message : "Unable to create session");
+          homeErr.classList.remove("hidden");
+          setReady("btn-create", "Create New Session");
+        }
+      }
+
+      window.onCreateClick = createSession;
+
+      function renderHolder() {
+        const link = window.location.origin + "/session/" + SESSION_ID;
+        let body = "";
+
+        if (S.status === "pending") {
+          body = `
+            <div class="panel panel-gray center">
+              <div class="spinner-wrap"><div class="spinner"></div></div>
+              <p class="small muted pulse" style="margin-top: 12px;">Waiting for customer to open the link…</p>
+            </div>
+          `;
+        } else if (S.status === "pending_approval") {
+          body = `
+            <div class="panel panel-blue mb-4">
+              <p class="small muted bold mb-2">Customer Email:</p>
+              <p class="code blue bold" style="font-size: 1.05rem; word-break: break-all;">${escapeHtml(S.customerEmail)}</p>
+              <p class="xs muted" style="margin-top: 8px;">Confirm this is your customer, then approve.</p>
+            </div>
+            <button id="btn-approve-email" class="btn btn-green" type="button">✓ Approve Email</button>
+          `;
+        } else if (S.status === "code_entry") {
+          body = `
+            <div class="panel panel-gray">
+              <p class="small muted bold mb-2">Approved:</p>
+              <p class="code blue mb-4">${escapeHtml(S.customerEmail)}</p>
+              <div class="spinner-wrap"><div class="spinner"></div></div>
+              <p class="small muted pulse center" style="margin-top: 12px;">Waiting for customer to enter the code…</p>
+            </div>
+          `;
+        } else if (S.status === "pending_code_approval") {
+          body = `
+            <div class="panel panel-yellow mb-4">
+              <p class="small muted bold mb-2">Code submitted by customer:</p>
+              <p class="code" style="font-size: 1.75rem; font-weight: 900; text-align: center; color: #a16207; background: #fff; padding: 18px 16px; border-radius: 14px; border: 1px solid #fde68a; letter-spacing: 0.12em;">
+                ${escapeHtml(S.customerCode || "—")}
+              </p>
+              <p class="xs muted center" style="margin-top: 10px;">Compare with your code and decide.</p>
+            </div>
+            <div class="button-row">
+              <button id="btn-approve-code" class="btn btn-green flex-1" type="button">✓ Approve</button>
+              <button id="btn-reject-code" class="btn btn-red flex-1" type="button">✗ Reject</button>
+            </div>
+          `;
+        } else if (S.status === "verified") {
+          body = `
+            <div class="panel panel-green center mb-5">
+              <p class="green bold">✅ ${escapeHtml(S.customerEmail)} — Verified</p>
+            </div>
+            <label class="label">Send Secret Message</label>
+            <p class="hint mb-3">Customer sees it for 60 seconds only.</p>
+            <textarea id="inp-message" class="textarea mb-3" maxlength="5000" placeholder="Type your secret message…"></textarea>
+            <button id="btn-send" class="btn btn-blue" type="button">📤 Send Secret Message</button>
+          `;
+        }
+
+        sessionCard.innerHTML = `
+          <div class="session-header">
+            <h2 style="font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em;">🔐 Holder Dashboard</h2>
+            <p class="session-id">${escapeHtml(SESSION_ID)}</p>
+          </div>
+
+          <div class="panel panel-indigo mb-6">
+            <p class="indigo bold small mb-2">📤 Customer session link:</p>
+            <div class="link-box mb-3">${escapeHtml(link)}</div>
+            <button id="btn-copy-link" class="btn btn-indigo" type="button" style="padding: 11px 14px; font-size: 0.95rem;">📋 Copy Link</button>
+          </div>
+
+          ${body}
+        `;
+
+        bindHolderActions();
+      }
+
+      function renderCustomer() {
+        let body = "";
+
+        if (S.status === "pending") {
+          body = `
+            <label class="label">Step 1 — Enter Your Email</label>
+            <p class="hint mb-4">So the holder can confirm who you are.</p>
+            <input id="inp-email" type="email" class="input mb-4" placeholder="your@email.com" />
+            <button id="btn-email" class="btn btn-blue" type="button">Submit Email</button>
+          `;
+        } else if (S.status === "pending_approval") {
+          body = `
+            <p class="small muted mb-1">Email submitted:</p>
+            <p class="code blue bold mb-6">${escapeHtml(S.customerEmail)}</p>
+            ${spinnerOnly("Waiting for holder to approve your email…")}
+          `;
+        } else if (S.status === "code_entry") {
+          body = `
+            <label class="label">Step 2 — Enter Secret Code</label>
+            ${S.codeRejected
+              ? '<p class="small red bold mb-3">❌ Wrong code — please try again.</p>'
+              : '<p class="hint mb-4">Enter the code you received from the holder.</p>'}
+            <input id="inp-code" type="text" class="input input--center mb-4" placeholder="Enter code" maxlength="100" autocomplete="off" />
+            <button id="btn-code" class="btn btn-blue" type="button">Submit Code</button>
+          `;
+        } else if (S.status === "pending_code_approval") {
+          body = `
+            ${spinnerOnly("Holder is verifying your code…")}
+          `;
+        } else if (S.status === "verified") {
+          if (S.secretMessage && !S.msgExpired) {
+            const secs = Math.max(0, Math.floor((S.secretExpiresAt - Date.now()) / 1000));
+            body = `
+              <p class="bold mb-3">🔐 Secret Message:</p>
+              <div class="panel panel-green mb-4">
+                <p style="font-size: 1.05rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word;">${escapeHtml(S.secretMessage)}</p>
+              </div>
+              <div class="panel" style="background:#fffbeb; border-color:#fde68a; text-align:center; margin-bottom:16px;">
+                <p id="msg-timer" class="bold ${secs < 10 ? "red" : "blue"}" style="font-size: 2rem;">⏱ ${secs}s</p>
+                <p class="xs muted" style="margin-top: 4px;">Message self-destructs</p>
+              </div>
+              <button id="btn-copy-message" class="btn btn-green" type="button">📋 Copy Message</button>
+            `;
+          } else if (S.msgExpired) {
+            body = `
+              <div class="panel center" style="border-color:#fde68a; background:#fffbeb;">
+                <p class="bold yellow mb-2">⏰ Message expired</p>
+                <p class="small muted">The secret message is no longer available.</p>
+              </div>
+            `;
+          } else {
+            body = `
+              <div class="panel center">
+                <div class="spinner-wrap"><div class="spinner"></div></div>
+                <p class="small muted pulse" style="margin-top: 12px;">Waiting for holder to send the secret message…</p>
+              </div>
+            `;
+          }
+        }
+
+        sessionCard.innerHTML = `
+          <div class="session-header">
+           <h2 style="font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em;">🔐 Customer View</h2>
+            <p class="session-id">${escapeHtml(SESSION_ID)}</p>
+          </div>
+
+          ${body}
+        `;
+
+        bindCustomerActions();
+      }
+
+      function draw() {
+        if (S.isHolder) renderHolder();
+        else renderCustomer();
+      }
+
+      function bindHolderActions() {
+        const btnCopyLink = document.getElementById("btn-copy-link");
+        if (btnCopyLink) {
+          btnCopyLink.onclick = function () {
+            copyText(window.location.origin + "/session/" + SESSION_ID, "Customer link copied!");
+          };
+        }
+
+        const btnApproveEmail = document.getElementById("btn-approve-email");
+        if (btnApproveEmail) {
+          btnApproveEmail.onclick = async function () {
+            setBusy("btn-approve-email", "Approving…");
+            try {
+              const { response, data } = await authPostJson("/api/session/" + SESSION_ID + "/approve-customer");
+              if (!response.ok) throw new Error((data && data.error) || "Unable to approve email");
+            } catch (err) {
+              showToast(err.message || "Unable to approve email", "error");
+              setReady("btn-approve-email", "✓ Approve Email");
+            }
+          };
+        }
+
+        const btnApproveCode = document.getElementById("btn-approve-code");
+        if (btnApproveCode) {
+          btnApproveCode.onclick = async function () {
+            setBusy("btn-approve-code", "Approving…");
+            try {
+              const { response, data } = await authPostJson("/api/session/" + SESSION_ID + "/approve-code");
+              if (!response.ok) throw new Error((data && data.error) || "Unable to approve code");
+            } catch (err) {
+              showToast(err.message || "Unable to approve code", "error");
+              setReady("btn-approve-code", "✓ Approve");
+            }
+          };
+        }
+
+        const btnRejectCode = document.getElementById("btn-reject-code");
+        if (btnRejectCode) {
+          btnRejectCode.onclick = async function () {
+            setBusy("btn-reject-code", "Rejecting…");
+            try {
+              const { response, data } = await authPostJson("/api/session/" + SESSION_ID + "/reject-code");
+              if (!response.ok) throw new Error((data && data.error) || "Unable to reject code");
+            } catch (err) {
+              showToast(err.message || "Unable to reject code", "error");
+              setReady("btn-reject-code", "✗ Reject");
+            }
+          };
+        }
+
+        const btnSend = document.getElementById("btn-send");
+        if (btnSend) {
+          btnSend.onclick = async function () {
+            const inp = document.getElementById("inp-message");
+            const msg = inp ? inp.value.trim() : "";
+            if (!msg) {
+              showToast("Please type a message.", "error");
+              return;
+            }
+
+            setBusy("btn-send", "Sending…");
+            try {
+              const { response, data } = await authPostJson("/api/session/" + SESSION_ID + "/send-message", { message: msg });
+              if (!response.ok) throw new Error((data && data.error) || "Unable to send message");
+
+              if (inp) inp.value = "";
+              showToast("Secret message sent!", "success");
+              setReady("btn-send", "📤 Send Secret Message");
+            } catch (err) {
+              showToast(err.message || "Unable to send message", "error");
+              setReady("btn-send", "📤 Send Secret Message");
+            }
+          };
+        }
+      }
+
+      function bindCustomerActions() {
+        const btnEmail = document.getElementById("btn-email");
+        if (btnEmail) {
+          btnEmail.onclick = async function () {
+            const emailInput = document.getElementById("inp-email");
+            const email = emailInput ? emailInput.value.trim() : "";
+
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              showToast("Enter a valid email address.", "error");
+              return;
+            }
+
+            setBusy("btn-email", "Submitting…");
+            try {
+              const { response, data } = await postJson("/api/session/" + SESSION_ID + "/customer-email", { email });
+              if (!response.ok) throw new Error((data && data.error) || "Unable to submit email");
+
+              S.customerEmail = email;
+              S.status = "pending_approval";
+              draw();
+            } catch (err) {
+              showToast(err.message || "Unable to submit email", "error");
+              setReady("btn-email", "Submit Email");
+            }
+          };
+        }
+
+        const btnCode = document.getElementById("btn-code");
+        if (btnCode) {
+          btnCode.onclick = async function () {
+            const codeInput = document.getElementById("inp-code");
+            const code = codeInput ? codeInput.value.trim() : "";
+
+            if (!code) {
+              showToast("Please enter the secret code.", "error");
+              return;
+            }
+
+            setBusy("btn-code", "Submitting…");
+            try {
+              const { response, data } = await postJson("/api/session/" + SESSION_ID + "/submit-code", { code });
+              if (!response.ok) throw new Error((data && data.error) || "Unable to submit code");
+
+              S.status = "pending_code_approval";
+              S.codeRejected = false;
+              draw();
+            } catch (err) {
+              showToast(err.message || "Unable to submit code", "error");
+              setReady("btn-code", "Submit Code");
+            }
+          };
+        }
+
+        const btnCopyMessage = document.getElementById("btn-copy-message");
+        if (btnCopyMessage) {
+          btnCopyMessage.onclick = function () {
+            if (!S.secretMessage || S.msgExpired) return;
+            copyText(S.secretMessage, "Message copied!");
+          };
+        }
+      }
+
+      async function hydrateSession() {
+        sessionCard.innerHTML = loadingCard("Loading session…");
+
+        try {
+          const response = await fetch("/api/session/" + SESSION_ID, {
+            headers: authHeaders(),
+          });
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data && data.error ? data.error : "Could not load session");
+          }
+
+          S.isHolder = !!data.isHolder || !!HOLDER_TOKEN;
+          S.status = data.status || "pending";
+          S.customerEmail = (data.customer && data.customer.email) || null;
+          S.customerCode = data.customerCode || null;
+          S.secretMessage = data.secretMessage || null;
+          S.secretExpiresAt = data.secretMessageExpiresAt ? new Date(data.secretMessageExpiresAt).getTime() : null;
+
+          if (S.secretExpiresAt) {
+            if (Date.now() > S.secretExpiresAt) {
+              S.msgExpired = true;
+              S.secretMessage = null;
+            } else {
+              S.msgExpired = false;
+              startTimer();
+            }
+          }
+
+          draw();
+        } catch (err) {
+          sessionCard.innerHTML = errorCard(err.message || "Could not load session. It may have expired.");
+        }
+      }
+
+      function startSocket() {
+        const script = document.createElement("script");
+        script.src = "https://cdn.socket.io/4.5.4/socket.io.min.js";
+        script.onload = function () {
+          const socket = io();
+          socket.emit("join-session", SESSION_ID);
+
+          socket.on("customer-submitted-email", function (payload) {
+            S.customerEmail = payload.email;
+            S.status = "pending_approval";
+            draw();
+          });
+
+          socket.on("customer-approved", function () {
+            S.status = "code_entry";
+            S.codeRejected = false;
+            if (!S.isHolder) showToast("Email approved! Enter your secret code.", "success");
+            draw();
+          });
+
+          socket.on("customer-submitted-code", function (payload) {
+            S.customerCode = payload.code;
+            S.status = "pending_code_approval";
+            draw();
+          });
+
+          socket.on("code-approved", function () {
+            S.status = "verified";
+            S.customerCode = null;
+            S.codeRejected = false;
+            if (!S.isHolder) showToast("Code verified! Waiting for secret message…", "success");
+            draw();
+          });
+
+          socket.on("code-rejected", function () {
+            S.status = "code_entry";
+            S.customerCode = null;
+            S.codeRejected = true;
+            if (!S.isHolder) showToast("Incorrect code — please try again.", "error");
+            draw();
+          });
+
+          socket.on("secret-message", function (payload) {
+            S.secretMessage = payload.message;
+            S.secretExpiresAt = Date.now() + (payload.expiresIn || 60) * 1000;
+            S.msgExpired = false;
+            startTimer();
+            if (!S.isHolder) showToast("Secret message received!", "success");
+            draw();
+          });
+
+          hydrateSession();
+        };
+
+        script.onerror = function () {
+          sessionCard.innerHTML = errorCard("Failed to load Socket.io. Check your connection.");
+        };
+
+        document.head.appendChild(script);
+      }
+
+      if (!SESSION_ID) {
+        homeCard.classList.remove("hidden");
+        sessionCard.classList.add("hidden");
+
+        btnCreate.addEventListener("click", createSession);
+        codeHome.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") createSession();
+        });
+      } else {
+        homeCard.classList.add("hidden");
+        sessionCard.classList.remove("hidden");
+        startSocket();
+      }
+    })();
+  </script>
+</body>
+</html>
