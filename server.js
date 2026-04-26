@@ -43,6 +43,7 @@ const getSession = (id) => {
       codeApproved: false,   // Holder manually approved
       codeRejected: false,   // Holder rejected (customer can retry)
       emailRejected: false,  // Holder rejected the submitted email (customer re-enters)
+      emailApprovalTimer: null, // setTimeout ref — auto-rejects after 30s if holder doesn't act
       secretMessage: null,
       secretMessageExpiresAt: null,
     });
@@ -144,9 +145,30 @@ app.post('/api/session/:sessionId/customer-email', (req, res) => {
     }
 
     const session = getSession(sessionId);
-    session.customer.email = email;
 
-    console.log(`[+] Customer email submitted: ${email}`);
+    // Clear any existing timer from a previous email submission attempt
+    if (session.emailApprovalTimer) {
+      clearTimeout(session.emailApprovalTimer);
+      session.emailApprovalTimer = null;
+    }
+
+    session.customer.email = email;
+    session.customer.emailRejected = false;
+
+    // Auto-reject after 30 seconds if holder takes no action
+    session.emailApprovalTimer = setTimeout(() => {
+      // Only fire if still waiting (not already approved or rejected)
+      if (session.customer.email && !session.customer.emailApproved) {
+        session.customer.email = null;
+        session.customer.emailApproved = false;
+        session.customer.emailRejected = true;
+        session.emailApprovalTimer = null;
+        console.log(`[⏱] Email auto-rejected after 30s timeout`);
+        io.to(`session-${sessionId}`).emit('customer-email-rejected', { reason: 'timeout' });
+      }
+    }, 30000);
+
+    console.log(`[+] Customer email submitted: ${email} — 30s approval window started`);
     io.to(`session-${sessionId}`).emit('customer-submitted-email', { email });
 
     res.json({ message: 'Email received. Waiting for holder approval.' });
@@ -165,6 +187,12 @@ app.post('/api/session/:sessionId/approve-customer', (req, res) => {
 
     if (token !== session.holderToken) {
       return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Cancel the 30s auto-reject timer since holder is acting manually
+    if (session.emailApprovalTimer) {
+      clearTimeout(session.emailApprovalTimer);
+      session.emailApprovalTimer = null;
     }
 
     session.customer.emailApproved = true;
@@ -190,13 +218,19 @@ app.post('/api/session/:sessionId/reject-customer', (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    // Cancel the 30s auto-reject timer since holder is acting manually
+    if (session.emailApprovalTimer) {
+      clearTimeout(session.emailApprovalTimer);
+      session.emailApprovalTimer = null;
+    }
+
     // Clear the submitted email so customer can try a different one
     session.customer.email = null;
     session.customer.emailApproved = false;
     session.customer.emailRejected = true;
 
     console.log(`[-] Email rejected by holder — customer must re-enter email`);
-    io.to(`session-${sessionId}`).emit('customer-email-rejected', {});
+    io.to(`session-${sessionId}`).emit('customer-email-rejected', { reason: 'manual' });
 
     res.json({ message: 'Email rejected. Customer can submit a different email.' });
   } catch (err) {
