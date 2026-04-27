@@ -254,7 +254,7 @@ app.post('/api/session/:sessionId/submit-code', (req, res) => {
       return res.status(400).json({ error: 'Code is required' });
     }
 
-    session.customerCode = code.toUpperCase().trim();
+    session.customerCode = code.trim();
     session.codeRejected = false;
 
     console.log(`[+] Customer submitted code — waiting for holder decision`);
